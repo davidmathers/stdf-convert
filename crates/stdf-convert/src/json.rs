@@ -17,15 +17,7 @@ use rust_stdf::StdfRecord;
 use serde::Serialize;
 use serde::ser::{self, SerializeMap, SerializeSeq, SerializeStruct};
 
-use crate::{Record, Result};
-
-/// Fields that hold bytes or packed bits rather than numbers, written as hex.
-const BYTE_FIELDS: &[&str] = &[
-    "RAW_DATA", "PART_FIX", "CONT_FLG", "OPT_FLG", "PART_FLG", "OPT_FLAG", "TEST_FLG", "PARM_FLG",
-    "FAIL_PIN", "SPIN_MAP", "FMU_FLG", "MASK_MAP", "FAL_MAP",
-    // byte and bit fields inside GDR.GEN_DATA, externally tagged by their STDF type
-    "Bn", "Dn",
-];
+use crate::{BYTE_FIELDS, Record, Result};
 
 /// A record's fields, serializable with any serde serializer.
 pub struct RecordData<'a>(pub &'a StdfRecord);

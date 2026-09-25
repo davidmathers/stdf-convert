@@ -2,16 +2,15 @@
 //! the `stdf-convert` command.
 
 use std::ffi::OsString;
-use std::fs::{self, File};
 use std::path::PathBuf;
 
-use pyo3::exceptions::{PyException, PyValueError};
+use pyo3::exceptions::{PyException, PyOSError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyList};
 use pythonize::pythonize;
 use serde::Serialize;
 use stdf_convert::json::RecordData;
-use stdf_convert::{Record, RecordReader, json};
+use stdf_convert::{BYTE_FIELDS, Record, RecordReader, convert_file};
 
 pyo3::create_exception!(stdf_convert, StdfError, PyException, "An STDF file could not be read.");
 
@@ -23,11 +22,18 @@ fn py_err(e: stdf_convert::Error) -> PyErr {
     }
 }
 
-/// Fields that hold bytes or packed bits; exposed as `bytes` rather than lists of ints.
-const BYTE_FIELDS: &[&str] = &[
-    "RAW_DATA", "PART_FIX", "CONT_FLG", "OPT_FLG", "PART_FLG", "OPT_FLAG", "TEST_FLG", "PARM_FLG",
-    "FAIL_PIN", "SPIN_MAP", "FMU_FLG", "MASK_MAP", "FAL_MAP", "Bn", "Dn",
-];
+/// Like [`py_err`], but file errors become Python's own `OSError(errno, strerror, filename)`,
+/// e.g. `FileNotFoundError`.
+fn py_err_with_files(py: Python<'_>, e: stdf_convert::Error) -> PyErr {
+    let stdf_convert::Error::File { path, source } = e else { return py_err(e) };
+    let Some(errno) = source.raw_os_error() else { return source.into() };
+    let text = source.to_string();
+    let strerror = text.strip_suffix(&format!(" (os error {errno})")).unwrap_or(&text).to_string();
+    match py.get_type::<PyOSError>().call1((errno, strerror, path.to_string_lossy().into_owned())) {
+        Ok(err) => PyErr::from_value(err),
+        Err(e) => e,
+    }
+}
 
 fn normalize_byte_fields(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<()> {
     if let Ok(dict) = value.cast::<PyDict>() {
@@ -126,20 +132,10 @@ fn convert(
     output: Option<PathBuf>,
     record_types: Option<Vec<String>>,
 ) -> PyResult<PathBuf> {
-    py.detach(|| {
-        let output = output.unwrap_or_else(|| stdf_convert::output_path(&path));
-        let reader = open(&path, record_types.as_deref())?;
-        let tmp = output.with_extension("jsonl.tmp");
-        let written = File::create(&tmp)
-            .map_err(PyErr::from)
-            .and_then(|f| json::write_json_lines(reader, f).map_err(py_err))
-            .and_then(|_| fs::rename(&tmp, &output).map_err(PyErr::from));
-        if let Err(e) = written {
-            let _ = fs::remove_file(&tmp);
-            return Err(e);
-        }
-        Ok(output)
-    })
+    let output = output.unwrap_or_else(|| stdf_convert::output_path(&path));
+    let filter: Option<Vec<&str>> = record_types.as_ref().map(|t| t.iter().map(String::as_str).collect());
+    py.detach(|| convert_file(&path, &output, filter.as_deref())).map_err(|e| py_err_with_files(py, e))?;
+    Ok(output)
 }
 
 /// Run the `stdf-convert` command with `argv` and return its exit code.

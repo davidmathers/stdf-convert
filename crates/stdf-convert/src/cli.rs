@@ -1,10 +1,9 @@
 //! The `stdf-convert` command (also run by the Python package).
 
 use std::ffi::OsString;
-use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 
-use crate::{RecordReader, json};
+use crate::convert_file;
 use clap::{Parser, ValueEnum};
 use walkdir::WalkDir;
 
@@ -133,22 +132,8 @@ fn convert(cli: &Cli, input: &Path, rel: &Path) -> Result<(), String> {
         return Ok(());
     }
     let filter: Option<Vec<&str>> = cli.records.as_ref().map(|r| r.iter().map(String::as_str).collect());
-    let records = RecordReader::open(input, filter.as_deref()).map_err(|e| e.to_string())?;
-    if let Some(parent) = out.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
-    }
-    // write to a temporary file so a failed conversion never leaves a partial output
-    let tmp = out.with_extension("jsonl.tmp");
-    let file = File::create(&tmp).map_err(|e| format!("{}: {e}", tmp.display()))?;
-    let written = match cli.format {
-        Format::Json => json::write_json_lines(records, file).map_err(|e| e.to_string()),
-    };
-    let n = match written.and_then(|n| fs::rename(&tmp, &out).map(|_| n).map_err(|e| e.to_string())) {
-        Ok(n) => n,
-        Err(e) => {
-            let _ = fs::remove_file(&tmp);
-            return Err(e);
-        }
+    let n = match cli.format {
+        Format::Json => convert_file(input, &out, filter.as_deref()).map_err(|e| e.to_string())?,
     };
     if !cli.quiet {
         println!("OK   {}  ({n} records)", out.display());

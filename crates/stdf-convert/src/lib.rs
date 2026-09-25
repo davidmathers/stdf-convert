@@ -43,8 +43,41 @@ pub enum Error {
     Read(String),
     #[error("unknown STDF record type {0:?}")]
     UnknownRecordType(String),
+    /// Reading or writing a file failed.
+    #[error("{path}: {source}")]
+    File { path: PathBuf, source: std::io::Error },
     #[error(transparent)]
     Io(#[from] std::io::Error),
+}
+
+/// Fields that hold bytes or packed bits rather than numbers: `bytes` in Python, hex in JSON.
+/// `Bn` and `Dn` are the byte and bit values inside `GDR.GEN_DATA`.
+pub const BYTE_FIELDS: &[&str] = &[
+    "RAW_DATA", "PART_FIX", "CONT_FLG", "OPT_FLG", "PART_FLG", "OPT_FLAG", "TEST_FLG", "PARM_FLG",
+    "FAIL_PIN", "SPIN_MAP", "FMU_FLG", "MASK_MAP", "FAL_MAP", "Bn", "Dn",
+];
+
+/// Convert `input` to JSON Lines at `output`, keeping only `record_types` if given, and return
+/// how many records were written. The folder is created if needed, and the file is written
+/// under a temporary name first, so a failed conversion never leaves a partial output.
+pub fn convert_file(input: &Path, output: &Path, record_types: Option<&[&str]>) -> Result<u64> {
+    let file_err = |path: &Path| {
+        let path = path.to_path_buf();
+        move |source| Error::File { path, source }
+    };
+    let records = RecordReader::open(input, record_types)?;
+    if let Some(parent) = output.parent().filter(|p| !p.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent).map_err(file_err(parent))?;
+    }
+    let tmp = output.with_extension("jsonl.tmp");
+    let result = File::create(&tmp)
+        .map_err(file_err(&tmp))
+        .and_then(|f| json::write_json_lines(records, f))
+        .and_then(|n| std::fs::rename(&tmp, output).map(|()| n).map_err(file_err(output)));
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;

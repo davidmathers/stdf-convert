@@ -46,3 +46,14 @@ def test_command_line(tmp_path: Path) -> None:
     assert (tmp_path / "out" / "a.jsonl").exists()
     result = subprocess.run([sys.executable, "-m", "stdf_convert", "--version"], capture_output=True, text=True)
     assert result.stdout.strip() == f"stdf-convert {stdf_convert.__version__}"
+
+
+def test_unwritable_output_names_the_folder(tmp_path: Path) -> None:
+    src = tmp_path / "lot.stdf"
+    src.write_bytes(STDF_BYTES)
+    blocker = tmp_path / "file"
+    blocker.write_text("")
+    folder = blocker / "sub"  # can't be created: its parent is a file
+    with pytest.raises(OSError) as e:
+        stdf_convert.convert(src, folder / "lot.jsonl")
+    assert e.value.filename == str(folder)
