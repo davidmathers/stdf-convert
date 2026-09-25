@@ -1,0 +1,20 @@
+[workspace]
+resolver = "3"
+members = ["crates/stdf-convert", "python"]
+# the Python extension is built with maturin (see python/README.md), not plain cargo
+default-members = ["crates/stdf-convert"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["David Mathers"]
+repository = "https://github.com/davidmathers/stdf-convert"
+
+[workspace.dependencies]
+rust-stdf = { version = "0.3.1", features = ["serialize", "zipfile"] }
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+strip = true

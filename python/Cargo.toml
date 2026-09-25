@@ -1,0 +1,20 @@
+[package]
+name = "stdf-convert-python"
+description = "Python bindings for stdf-convert"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "_stdf_convert"
+crate-type = ["cdylib"]
+
+[dependencies]
+stdf-convert = { path = "../crates/stdf-convert" }
+rust-stdf.workspace = true
+pyo3 = { version = "0.29", features = ["abi3-py39"] }
+pythonize = "0.29"
+serde = "1"

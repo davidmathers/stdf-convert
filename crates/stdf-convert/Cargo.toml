@@ -1,0 +1,18 @@
+[package]
+name = "stdf-convert"
+description = "Convert STDF V4 and V4-2007 semiconductor test data files to JSON Lines"
+readme = "../../README.md"
+publish = false
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+rust-stdf.workspace = true
+ryu = "1"
+serde = "1"
+thiserror = "2"
+walkdir = "2"

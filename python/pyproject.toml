@@ -1,0 +1,33 @@
+[build-system]
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
+
+[project]
+name = "stdf-convert"
+description = "Read STDF V4 and V4-2007 semiconductor test data files, and convert them to JSON Lines"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "David Mathers" }]
+keywords = ["stdf", "semiconductor", "test-data", "json"]
+dynamic = ["version"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Operating System :: OS Independent",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+]
+
+[project.scripts]
+stdf-convert = "stdf_convert._cli:main"
+
+[project.urls]
+Repository = "https://github.com/davidmathers/stdf-convert"
+Issues = "https://github.com/davidmathers/stdf-convert/issues"
+
+[tool.maturin]
+python-source = "python"
+module-name = "stdf_convert._stdf_convert"
+features = ["pyo3/extension-module"]
