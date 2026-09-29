@@ -1,8 +1,9 @@
-//! Read STDF V4 and V4-2007 semiconductor test data files, and write them as JSON Lines:
-//! the library behind the `stdf-convert` command and Python package.
+//! Read STDF V4 and V4-2007 semiconductor test data files, and write them as JSON Lines or
+//! Arrow record batches: the library behind the `stdf-convert` command and Python package.
 //!
 //! Parsing is done by [`rust_stdf`]. This crate adds a record iterator that tracks each
-//! record's position in the file and filters by record type, and a JSON Lines writer.
+//! record's position in the file and filters by record type, a JSON Lines writer, and an
+//! Arrow reader ([`arrow`]) with one table per record type.
 //!
 //! ```no_run
 //! let records = stdf_convert::RecordReader::open("results.stdf.gz", None)?;
@@ -11,6 +12,7 @@
 //! # Ok::<(), stdf_convert::Error>(())
 //! ```
 
+pub mod arrow;
 mod cli;
 pub mod json;
 
@@ -24,16 +26,11 @@ use std::path::{Path, PathBuf};
 pub use rust_stdf;
 use rust_stdf::StdfRecord;
 use rust_stdf::stdf_file::StdfReader;
-use rust_stdf::stdf_record_type::get_rec_name_from_code;
 
 /// Every record type name, as used by [`RecordReader::open`]'s filter and
-/// [`Record::record_type`]. `RESERVED` and `INVALID` cover records that are not part of
+/// [`Record::record_type`]. `RESERVED` and `UNKNOWN` cover records that are not part of
 /// the STDF specification.
-pub const RECORD_TYPES: &[&str] = &[
-    "FAR", "ATR", "VUR", "MIR", "MRR", "PCR", "HBR", "SBR", "PMR", "PGR", "PLR", "RDR", "SDR", "PSR", "NMR",
-    "CNR", "SSR", "CDR", "WIR", "WRR", "WCR", "PIR", "PRR", "TSR", "PTR", "MPR", "FTR", "STR", "BPS", "EPS",
-    "GDR", "DTR", "RESERVED", "INVALID",
-];
+pub const RECORD_TYPES: &[&str] = arrow::RECORD_TYPES;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -48,14 +45,13 @@ pub enum Error {
     File { path: PathBuf, source: std::io::Error },
     #[error(transparent)]
     Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Arrow(#[from] arrow_schema::ArrowError),
 }
 
 /// Fields that hold bytes or packed bits rather than numbers: `bytes` in Python, hex in JSON.
 /// `Bn` and `Dn` are the byte and bit values inside `GDR.GEN_DATA`.
-pub const BYTE_FIELDS: &[&str] = &[
-    "RAW_DATA", "PART_FIX", "CONT_FLG", "OPT_FLG", "PART_FLG", "OPT_FLAG", "TEST_FLG", "PARM_FLG",
-    "FAIL_PIN", "SPIN_MAP", "FMU_FLG", "MASK_MAP", "FAL_MAP", "Bn", "Dn",
-];
+pub const BYTE_FIELDS: &[&str] = arrow::BYTE_FIELDS;
 
 /// Convert `input` to JSON Lines at `output`, keeping only `record_types` if given, and return
 /// how many records were written. The folder is created if needed, and the file is written
@@ -88,10 +84,11 @@ pub struct Record {
     pub sequence_number: u64,
     /// Zero-based offset of the record header in the decompressed stream.
     pub byte_offset: u64,
-    /// The header's record type and subtype codes, kept for reserved and invalid records.
+    /// The header's record length (bytes after the header), type and subtype codes.
+    pub rec_len: u16,
     pub rec_typ: u8,
     pub rec_sub: u8,
-    /// `"PTR"`, `"PIR"`, ..., `"RESERVED"` or `"INVALID"`.
+    /// `"PTR"`, `"PIR"`, ..., `"RESERVED"` or `"UNKNOWN"`.
     pub record_type: &'static str,
     pub data: StdfRecord,
 }
@@ -151,6 +148,7 @@ impl Iterator for RecordReader {
             return Some(Ok(Record {
                 sequence_number,
                 byte_offset,
+                rec_len: raw.header.len,
                 rec_typ: raw.header.typ,
                 rec_sub: raw.header.sub,
                 record_type,
@@ -162,9 +160,5 @@ impl Iterator for RecordReader {
 
 /// The record type name of `record`, as in [`RECORD_TYPES`].
 pub fn record_type_name(record: &StdfRecord) -> &'static str {
-    match record {
-        StdfRecord::ReservedRec(_) => "RESERVED",
-        StdfRecord::InvalidRec(_) => "INVALID",
-        _ => get_rec_name_from_code(record.get_type()),
-    }
+    RECORD_TYPES[arrow::record_index(record)]
 }

@@ -4,14 +4,15 @@ build-backend = "maturin"
 
 [project]
 name = "stdf-convert"
-description = "Read STDF V4 and V4-2007 semiconductor test data files, and convert them to JSON Lines"
+description = "Read STDF V4 and V4-2007 semiconductor test data files as Arrow tables, one per record type"
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
 license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "David Mathers" }]
-keywords = ["stdf", "semiconductor", "test-data", "json"]
+keywords = ["stdf", "semiconductor", "test-data", "json", "arrow"]
 dynamic = ["version"]
+dependencies = ["pyarrow>=14"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Operating System :: OS Independent",

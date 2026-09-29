@@ -32,12 +32,15 @@ One JSON object per line, per record, fields in STDF specification order:
 
 - `sequence_number` is the record's position in the file and `byte_offset` the offset of
   its header in the decompressed stream; both are unaffected by `--records`.
-- Byte and bit fields (flags, `PART_FIX`, pin maps, ...) are lowercase hex strings.
+- Byte fields (flags, `PART_FIX`, ...) are lowercase hex strings. Bit fields (pin maps,
+  ...) are `{"bit_count":5,"bit_data":"15"}`.
+- Text is UTF-8 when the file's bytes are valid UTF-8, otherwise Latin-1.
 - Floats have the fewest digits that read back as the same value. NaN and infinities,
   which JSON numbers cannot represent, are the strings `"NaN"`, `"Infinity"` and
   `"-Infinity"`.
 - Absent optional fields are `null`. Records outside the specification are kept:
-  `RESERVED` with its payload as `RAW_DATA`, `INVALID` with its header.
+  `RESERVED` (types 180 and 181) and `UNKNOWN` (unknown types), each with `TYP`, `SUB`,
+  `BYTE_ORDER` and its payload as `RAW_DATA`.
 
 ## Python
 
@@ -48,14 +51,11 @@ pip install stdf-convert
 ```python
 import stdf_convert
 
-for record in stdf_convert.records("results.stdf.gz", ["PIR", "PTR", "PRR"]):
-    print(record["record_type"], record["data"])
-
-stdf_convert.convert("results.stdf.gz")
+tables = stdf_convert.tables("results.stdf.gz")   # {"FAR": pyarrow.Table, "PIR": ..., "PTR": ...}
 ```
 
-Records are dictionaries in the same shape as the JSON, with byte fields as `bytes` and
-NaN as `float("nan")`. See [`python/README.md`](python/README.md).
+The Python package reads files as Arrow tables, one per record type, with a fixed schema
+generated from rust-stdf's record definitions. See [`python/README.md`](python/README.md).
 
 To build just the command from source, with a recent stable Rust (tested with 1.98):
 
@@ -67,7 +67,8 @@ cargo install --path crates/stdf-convert
 
 | Path | |
 |---|---|
-| `crates/stdf-convert` | The `stdf-convert` command and the library behind it (record reader, JSON Lines writer) |
+| `crates/stdf-convert` | The `stdf-convert` command and the library behind it (record reader, JSON Lines writer, Arrow reader) |
+| `crates/codegen` | Generates `crates/stdf-convert/src/arrow/generated.rs` from rust-stdf's record definitions: `cargo run -p stdf-convert-codegen` after changing the rust-stdf version (a test fails if it is out of date) |
 | `python` | The Python package (PyO3, built with maturin) |
 
 ## Development

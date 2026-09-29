@@ -65,17 +65,16 @@ fn reserved_records_keep_their_bytes_as_hex() {
     let path = file("reserved.stdf", &with_record(180, 7, b"\x00\x80\xff"));
     assert!(
         jsonl(&path, Some(&["reserved"]))
-            .contains(r#""record_type":"RESERVED","data":{"RAW_DATA":"0080ff"}"#)
+            .contains(r#""record_type":"RESERVED","data":{"TYP":180,"SUB":7,"BYTE_ORDER":"LittleEndian","RAW_DATA":"0080ff"}"#)
     );
 }
 
 #[test]
-fn invalid_records() {
-    let path = file("invalid.stdf", &with_record(99, 99, b""));
-    assert!(
-        jsonl(&path, Some(&["invalid"]))
-            .contains(r#""record_type":"INVALID","data":{"LEN":0,"TYP":99,"SUB":99}"#)
-    );
+fn unknown_records_keep_their_bytes() {
+    let path = file("unknown.stdf", &with_record(99, 99, b"\x01\x02"));
+    assert!(jsonl(&path, Some(&["unknown"])).contains(
+        r#""record_type":"UNKNOWN","data":{"TYP":99,"SUB":99,"BYTE_ORDER":"LittleEndian","RAW_DATA":"0102"}"#
+    ));
 }
 
 #[test]
@@ -90,7 +89,10 @@ fn gdr_nested_bytes() {
     let mut payload = vec![2, 0, 11, 3, 0x00, 0x80, 0xff, 12, 8, 0];
     payload.push(0xa5);
     let path = file("gdr.stdf", &with_record(50, 10, &payload));
-    assert!(jsonl(&path, Some(&["gdr"])).contains(r#""GEN_DATA":[{"Bn":"0080ff"},{"Dn":"a5"}]"#));
+    assert!(
+        jsonl(&path, Some(&["gdr"]))
+            .contains(r#""GEN_DATA":[{"Bn":"0080ff"},{"Dn":{"bit_count":8,"bit_data":"a5"}}]"#)
+    );
 }
 
 #[test]

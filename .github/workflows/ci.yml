@@ -40,7 +40,7 @@ jobs:
       - name: Build and install the wheel
         shell: bash
         run: |
-          python -m pip install maturin pytest
+          python -m pip install maturin pytest duckdb
           maturin build --release --locked -m python/Cargo.toml -o dist
           python -m pip install dist/*.whl
       - run: python -m pytest -q python/tests
