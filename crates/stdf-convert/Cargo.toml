@@ -1,6 +1,6 @@
 [package]
 name = "stdf-convert"
-description = "Convert STDF V4 and V4-2007 semiconductor test data files to JSON Lines"
+description = "Convert STDF V4 and V4-2007 semiconductor test data files to JSON Lines or Arrow record batches"
 readme = "../../README.md"
 publish = false
 version.workspace = true
@@ -10,6 +10,9 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
+arrow-array = "59"
+arrow-buffer = "59"
+arrow-schema = "59"
 clap = { version = "4", features = ["derive"] }
 rust-stdf.workspace = true
 ryu = "1"

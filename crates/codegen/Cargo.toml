@@ -1,0 +1,14 @@
+[package]
+name = "stdf-convert-codegen"
+description = "Generates stdf-convert's Arrow columns from rust-stdf's record definitions"
+publish = false
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+quote = "1"
+serde_json = "1"
+syn = { version = "2", features = ["full"] }

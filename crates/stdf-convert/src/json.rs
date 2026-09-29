@@ -22,14 +22,6 @@ use crate::{BYTE_FIELDS, Record, Result};
 /// A record's fields, serializable with any serde serializer.
 pub struct RecordData<'a>(pub &'a StdfRecord);
 
-#[derive(Serialize)]
-#[serde(rename_all = "UPPERCASE")]
-struct InvalidRecord {
-    len: u16,
-    typ: u8,
-    sub: u8,
-}
-
 impl Serialize for RecordData<'_> {
     fn serialize<S: ser::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         match self.0 {
@@ -65,8 +57,7 @@ impl Serialize for RecordData<'_> {
             StdfRecord::EPS(d) => d.serialize(s),
             StdfRecord::GDR(d) => d.serialize(s),
             StdfRecord::DTR(d) => d.serialize(s),
-            StdfRecord::ReservedRec(d) => d.serialize(s),
-            StdfRecord::InvalidRec(d) => InvalidRecord { len: d.len, typ: d.typ, sub: d.sub }.serialize(s),
+            StdfRecord::ReservedRec(d) | StdfRecord::UnknownRec(d) => d.serialize(s),
         }
     }
 }
@@ -746,8 +737,15 @@ mod tests {
 
     fn json_of(record: StdfRecord) -> String {
         let record_type = crate::record_type_name(&record);
-        let r =
-            Record { sequence_number: 1, byte_offset: 6, rec_typ: 0, rec_sub: 0, record_type, data: record };
+        let r = Record {
+            sequence_number: 1,
+            byte_offset: 6,
+            rec_len: 0,
+            rec_typ: 0,
+            rec_sub: 0,
+            record_type,
+            data: record,
+        };
         let mut out = Vec::new();
         write_record(&mut out, &r);
         String::from_utf8(out).unwrap()
