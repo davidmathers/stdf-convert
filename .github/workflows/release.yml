@@ -15,7 +15,7 @@ jobs:
   check-version:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Tag matches the workspace version
         run: |
           version=$(awk -F '"' '/^version = / {print $2; exit}' Cargo.toml)
@@ -34,13 +34,13 @@ jobs:
           - { os: windows-latest, target: x64 }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
           manylinux: auto
           args: --release --locked --compatibility pypi -m python/Cargo.toml -o dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-wheels-${{ matrix.os }}-${{ matrix.target }}
           path: dist
@@ -49,12 +49,12 @@ jobs:
     needs: check-version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: PyO3/maturin-action@v1
         with:
           command: sdist
           args: -m python/Cargo.toml -o dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-sdist
           path: dist
@@ -67,7 +67,7 @@ jobs:
       id-token: write
     steps:
       # only the Python packages; the command binaries go to the GitHub release
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: dist-*
           path: dist
@@ -86,7 +86,7 @@ jobs:
           - { os: windows-latest, target: x86_64-pc-windows-msvc }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -104,7 +104,7 @@ jobs:
             cp target/${{ matrix.target }}/release/stdf-convert "$name"/
             tar czf "$name.tar.gz" "$name"
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: binary-${{ matrix.target }}
           path: stdf-convert-*.*z*
@@ -115,7 +115,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: binary-*
           path: binaries
