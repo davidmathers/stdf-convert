@@ -14,6 +14,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 stdf-convert = { path = "../crates/stdf-convert" }
-pyo3 = { version = "0.29", features = ["abi3-py39"] }
+pyo3 = { version = "0.29", features = ["abi3-py311"] }
 pyo3-arrow = { version = "0.19", default-features = false }
 arrow-array = "59"
