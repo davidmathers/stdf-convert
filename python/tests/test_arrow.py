@@ -126,7 +126,7 @@ def json_lines(path: Path, tmp_path: Path) -> list:
     subprocess.run(
         [sys.executable, "-m", "stdf_convert", "-q", "-o", str(tmp_path / "json"), str(path)], check=True
     )
-    return [json.loads(line) for line in (tmp_path / "json" / f"{path.stem}.jsonl").read_text().splitlines()]
+    return [json.loads(line) for line in (tmp_path / "json" / f"{path.stem}.jsonl").read_text(encoding="utf-8").splitlines()]
 
 
 def test_tables_hold_exactly_what_the_json_output_holds(tmp_path: Path) -> None:
