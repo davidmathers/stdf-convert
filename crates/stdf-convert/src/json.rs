@@ -17,17 +17,17 @@ use rust_stdf::StdfRecord;
 use serde::Serialize;
 use serde::ser::{self, SerializeMap, SerializeSeq, SerializeStruct};
 
-use crate::{BYTE_FIELDS, Record, Result};
+use crate::{BYTE_FIELDS, Record, Result, Vur};
 
 /// A record's fields, serializable with any serde serializer.
-pub struct RecordData<'a>(pub &'a StdfRecord);
+pub struct RecordData<'a>(pub &'a Record);
 
 impl Serialize for RecordData<'_> {
     fn serialize<S: ser::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        match self.0 {
+        match &self.0.data {
             StdfRecord::FAR(d) => d.serialize(s),
             StdfRecord::ATR(d) => d.serialize(s),
-            StdfRecord::VUR(d) => d.serialize(s),
+            StdfRecord::VUR(_) => Vur::of(self.0).serialize(s),
             StdfRecord::MIR(d) => d.serialize(s),
             StdfRecord::MRR(d) => d.serialize(s),
             StdfRecord::PCR(d) => d.serialize(s),
@@ -69,7 +69,7 @@ pub fn write_record(out: &mut Vec<u8>, record: &Record) {
         r#"{{"sequence_number":{},"byte_offset":{},"rec_typ":{},"rec_sub":{},"record_type":"{}","data":"#,
         record.sequence_number, record.byte_offset, record.rec_typ, record.rec_sub, record.record_type
     );
-    RecordData(&record.data)
+    RecordData(record)
         .serialize(&mut Json { out })
         .expect("STDF records contain only JSON-representable values");
     out.push(b'}');
@@ -745,6 +745,7 @@ mod tests {
             rec_sub: 0,
             record_type,
             data: record,
+            vur: None,
         };
         let mut out = Vec::new();
         write_record(&mut out, &r);

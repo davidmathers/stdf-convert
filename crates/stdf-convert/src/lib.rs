@@ -15,8 +15,10 @@
 pub mod arrow;
 mod cli;
 pub mod json;
+mod vur;
 
 pub use cli::{output_path, run};
+pub use vur::Vur;
 
 use std::collections::HashSet;
 use std::fs::File;
@@ -38,6 +40,9 @@ pub enum Error {
     Open { path: PathBuf, msg: String },
     #[error("{0}")]
     Read(String),
+    /// A record's fields don't fit its length.
+    #[error("{record_type} record at byte offset {byte_offset}: {msg}")]
+    Malformed { record_type: &'static str, byte_offset: u64, msg: String },
     #[error("unknown STDF record type {0:?}")]
     UnknownRecordType(String),
     /// Reading or writing a file failed.
@@ -90,7 +95,11 @@ pub struct Record {
     pub rec_sub: u8,
     /// `"PTR"`, `"PIR"`, ..., `"RESERVED"` or `"UNKNOWN"`.
     pub record_type: &'static str,
+    /// The fields, as rust-stdf reads them. For VUR records, use [`Record::vur`] instead.
     pub data: StdfRecord,
+    /// For VUR records, the fields in either layout (see [`Vur`]); rust-stdf reads only the
+    /// specification's single name. `None` for other records.
+    pub vur: Option<Vur>,
 }
 
 /// Streams the records of an STDF file, which may be gzip (`.gz`), bzip2 (`.bz2`) or zip
@@ -145,6 +154,13 @@ impl Iterator for RecordReader {
             if self.filter.as_ref().is_some_and(|f| !f.contains(record_type)) {
                 continue;
             }
+            let vur = match data {
+                StdfRecord::VUR(_) => match Vur::decode(&raw.raw_data) {
+                    Ok(vur) => Some(vur),
+                    Err(msg) => return Some(Err(Error::Malformed { record_type, byte_offset, msg })),
+                },
+                _ => None,
+            };
             return Some(Ok(Record {
                 sequence_number,
                 byte_offset,
@@ -153,6 +169,7 @@ impl Iterator for RecordReader {
                 rec_sub: raw.header.sub,
                 record_type,
                 data,
+                vur,
             }));
         }
     }

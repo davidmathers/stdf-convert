@@ -16,6 +16,6 @@ arrow-schema = "59"
 clap = { version = "4", features = ["derive"] }
 rust-stdf.workspace = true
 ryu = "1"
-serde = "1"
+serde = { version = "1", features = ["derive"] }
 thiserror = "2"
 walkdir = "2"
