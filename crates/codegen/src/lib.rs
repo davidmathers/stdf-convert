@@ -9,6 +9,8 @@
 //!
 //! The record types come from the `RECORDS` table in rust-stdf-derive, which generates the
 //! `StdfRecord` enum, plus the two variants that enum adds for reserved and unknown records.
+//! A record rust-stdf reads incompletely ([`OVERRIDES`]) gets its columns from stdf-convert's
+//! own struct for it instead, declared with the same type aliases.
 //! The generated code matches on every `StdfRecord` variant, so if rust-stdf adds one, it
 //! fails to compile until the generator knows about it.
 
@@ -23,6 +25,14 @@ use syn::{Expr, Fields, GenericArgument, Item, Lit, PathArguments, Type};
 
 /// Where the generated file goes, relative to the workspace root.
 pub const OUTPUT: &str = "crates/stdf-convert/src/arrow/generated.rs";
+
+/// The stdf-convert source defining the [`OVERRIDES`] structs, relative to the workspace root.
+pub const OVERRIDES_SOURCE: &str = "crates/stdf-convert/src/vur.rs";
+
+/// Records whose columns come from a stdf-convert struct rather than rust-stdf's: (record name,
+/// struct). The struct has a `fn of(&Record) -> Cow<Self>` giving a record's values. VUR: until
+/// https://github.com/noonchen/rust-stdf/issues/33 is fixed.
+const OVERRIDES: &[(&str, &str)] = &[("VUR", "Vur")];
 
 /// `StdfRecord` variants after the `RECORDS` table: (variant, struct, record name as in
 /// `stdf_convert::RECORD_TYPES`).
@@ -56,6 +66,8 @@ pub struct Source {
     pub files: Vec<PathBuf>,
     /// rust-stdf-derive's `src/lib.rs`, which holds the `RECORDS` table.
     pub derive: PathBuf,
+    /// [`OVERRIDES_SOURCE`].
+    pub overrides: PathBuf,
 }
 
 /// Find the rust-stdf and rust-stdf-derive that `workspace`'s lock file resolves to.
@@ -91,14 +103,19 @@ pub fn locate_rust_stdf(workspace: &Path) -> Result<Source, String> {
         .collect();
     files.sort();
     files.push(src.join("stdf_codec").join("primitives.rs"));
-    Ok(Source { version, files, derive: derive_src.join("lib.rs") })
+    Ok(Source {
+        version,
+        files,
+        derive: derive_src.join("lib.rs"),
+        overrides: workspace.join(OVERRIDES_SOURCE),
+    })
 }
 
 /// Generate the module from `source`.
 pub fn generate_from(source: &Source) -> Result<String, String> {
     let read = |p: &PathBuf| std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()));
     let files = source.files.iter().map(read).collect::<Result<Vec<_>, _>>()?;
-    generate(&files, &read(&source.derive)?, &source.version)
+    generate(&files, &read(&source.derive)?, &read(&source.overrides)?, &source.version)
 }
 
 struct Record {
@@ -106,8 +123,10 @@ struct Record {
     name: String,
     /// The `StdfRecord` variant.
     variant: String,
-    /// The rust-stdf struct.
-    rust_type: String,
+    /// The struct's path in stdf-convert: rust-stdf's, or for [`OVERRIDES`], stdf-convert's.
+    rust_path: String,
+    /// Whether the struct is stdf-convert's.
+    overridden: bool,
     fields: Vec<Field>,
 }
 
@@ -129,12 +148,13 @@ struct Value {
 }
 
 /// Generate the module from the text of rust-stdf `version`'s record and type definitions,
-/// and of rust-stdf-derive's `src/lib.rs`.
-pub fn generate(files: &[String], derive: &str, version: &str) -> Result<String, String> {
+/// of rust-stdf-derive's `src/lib.rs`, and of [`OVERRIDES_SOURCE`].
+pub fn generate(files: &[String], derive: &str, overrides: &str, version: &str) -> Result<String, String> {
     let mut items = Vec::new();
     for text in files {
         items.extend(syn::parse_file(text).map_err(|e| format!("rust-stdf source: {e}"))?.items);
     }
+    items.extend(syn::parse_file(overrides).map_err(|e| format!("{OVERRIDES_SOURCE}: {e}"))?.items);
 
     // Type names fields can be declared with: aliases, enums and structs other than records.
     let mut codes = HashSet::new();
@@ -186,8 +206,15 @@ pub fn generate(files: &[String], derive: &str, version: &str) -> Result<String,
     let table = record_table(derive)?;
     let extra = EXTRA_RECORDS.iter().map(|(v, t, n)| (v.to_string(), t.to_string(), n.to_string()));
     for (variant, rust_type, name) in table.into_iter().map(|n| (n.clone(), n.clone(), n)).chain(extra) {
+        let (rust_type, rust_path, overridden) = match OVERRIDES.iter().find(|(n, _)| *n == name) {
+            Some((_, own)) => (own.to_string(), format!("crate::{own}"), true),
+            None => (rust_type.clone(), format!("rust_stdf::{rust_type}"), false),
+        };
         let fields = columns_of(&rust_type)?;
-        records.push(Record { name, variant, rust_type, fields });
+        records.push(Record { name, variant, rust_path, overridden, fields });
+    }
+    if let Some((name, _)) = OVERRIDES.iter().find(|(n, _)| !records.iter().any(|r| r.name == *n)) {
+        return Err(format!("override for {name}, which is not a rust-stdf record"));
     }
 
     let mut inner = Vec::new();
@@ -222,7 +249,8 @@ pub fn generate(files: &[String], derive: &str, version: &str) -> Result<String,
             inner.push(Record {
                 name: code.clone(),
                 variant: String::new(),
-                rust_type: code.clone(),
+                rust_path: format!("rust_stdf::{code}"),
+                overridden: false,
                 fields,
             });
         }
@@ -314,7 +342,7 @@ fn field_code(rust_type: &str, field: &str, ty: &Type, codes: &HashSet<String>) 
 }
 
 fn render_columns(w: &mut String, r: &Record, what: &str) {
-    let _ = writeln!(w, "/// Columns of {what} (`rust_stdf::{}`).", r.rust_type);
+    let _ = writeln!(w, "/// Columns of {what} (`{}`).", r.rust_path);
     let _ = writeln!(w, "#[derive(Default)]");
     let _ = writeln!(w, "pub(crate) struct {}Columns {{", r.name);
     for f in &r.fields {
@@ -329,7 +357,7 @@ fn render_columns(w: &mut String, r: &Record, what: &str) {
     }
     let _ = writeln!(w, "        ]");
     let _ = writeln!(w, "    }}\n");
-    let _ = writeln!(w, "    pub(crate) fn append(&mut self, r: &rust_stdf::{}) {{", r.rust_type);
+    let _ = writeln!(w, "    pub(crate) fn append(&mut self, r: &{}) {{", r.rust_path);
     if r.fields.is_empty() {
         let _ = writeln!(w, "        let _ = r;");
     }
@@ -362,8 +390,8 @@ fn render(
     let w = &mut out;
     let _ = writeln!(
         w,
-        "// @generated by stdf-convert-codegen from rust-stdf {version} (src/records, src/stdf_codec)\n\
-         // and rust-stdf-derive (RECORDS).\n\
+        "// @generated by stdf-convert-codegen from rust-stdf {version} (src/records, src/stdf_codec),\n\
+         // rust-stdf-derive (RECORDS) and {OVERRIDES_SOURCE}.\n\
          // Do not edit: run `cargo run -p stdf-convert-codegen` to regenerate.\n\
          \n\
          #![allow(clippy::upper_case_acronyms)]\n\
@@ -490,11 +518,16 @@ fn render(
     let _ = writeln!(w, "        }})");
     let _ = writeln!(w, "    }}\n");
     let _ = writeln!(w, "    /// Append `record`, which must be of this record type.");
-    let _ = writeln!(w, "    pub(crate) fn append(&mut self, record: &StdfRecord) {{");
-    let _ = writeln!(w, "        match (self, record) {{");
+    let _ = writeln!(w, "    pub(crate) fn append(&mut self, record: &crate::Record) {{");
+    let _ = writeln!(w, "        match (self, &record.data) {{");
     for r in records {
-        let _ =
-            writeln!(w, "            (Self::{}(c), StdfRecord::{}(r)) => c.append(r),", r.name, r.variant);
+        let (pattern, value) =
+            if r.overridden { ("_", format!("&{}::of(record)", r.rust_path)) } else { ("r", "r".into()) };
+        let _ = writeln!(
+            w,
+            "            (Self::{}(c), StdfRecord::{}({pattern})) => c.append({value}),",
+            r.name, r.variant
+        );
     }
     let _ =
         writeln!(w, "            _ => panic!(\"record appended to the columns of another record type\"),");

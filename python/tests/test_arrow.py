@@ -53,6 +53,11 @@ def ftr() -> bytes:
     return record(15, 20, payload)
 
 
+def vur_two_names() -> bytes:
+    # UPD_CNT=2, UPD_NAM ["V4-2007", "Scan:2007.1"]
+    return bytes([2]) + cn("V4-2007") + cn("Scan:2007.1")
+
+
 def sample_file(path: Path) -> Path:
     """Two sites whose results interleave, with records cut short, NaN, arrays, bit fields,
     GDR values, UTF-8 and Latin-1 text, and reserved and unknown records."""
@@ -60,6 +65,7 @@ def sample_file(path: Path) -> Path:
         b"".join(
             [
                 record(0, 10, bytes([2, 4])),  # FAR
+                record(0, 30, vur_two_names()),  # VUR
                 record(5, 10, bytes([1, 1])),  # PIR site 1
                 record(5, 10, bytes([1, 2])),  # PIR site 2
                 ptr(1, 0.017999999225139618, limits=True),
@@ -262,7 +268,7 @@ def test_duckdb_raw_tables(tmp_path: Path) -> None:
         "SELECT t.SITE_NUM, p.sequence_number FROM ptr t ASOF JOIN pir p "
         "ON t.HEAD_NUM = p.HEAD_NUM AND t.SITE_NUM = p.SITE_NUM AND t.sequence_number > p.sequence_number "
         "ORDER BY t.sequence_number"
-    ).fetchall() == [(1, 1), (2, 2)]
+    ).fetchall() == [(1, 2), (2, 3)]
 
 
 STDF_BYTES = record(0, 10, bytes([2, 4])) + record(5, 10, bytes([1, 2]))
@@ -303,3 +309,64 @@ def test_not_stdf_raises_stdf_error(tmp_path: Path) -> None:
     path.write_bytes(b"not an STDF file")
     with pytest.raises(stdf_convert.StdfError):
         stdf_convert.tables(path)
+
+
+FAR = record(0, 10, bytes([2, 4]))
+
+
+@pytest.mark.parametrize(
+    "payload, upd_cnt, upd_nam",
+    [
+        (vur_two_names(), 2, ["V4-2007", "Scan:2007.1"]),
+        (bytes([1]) + cn("V4-2007"), 1, ["V4-2007"]),
+        (cn("V4-2007"), None, ["V4-2007"]),  # the V4-2007 specification's single C*n
+        (b"", None, []),
+    ],
+    ids=["two", "one", "single", "empty"],
+)
+def test_vur_keeps_every_update_name(tmp_path: Path, payload: bytes, upd_cnt, upd_nam) -> None:
+    path = tmp_path / "vur.stdf"
+    path.write_bytes(FAR + record(0, 30, payload))
+    want = [{"UPD_CNT": upd_cnt, "UPD_NAM": upd_nam}]
+
+    schema = stdf_convert.schema("VUR")
+    assert schema.names == HEADER_COLUMNS + ["UPD_CNT", "UPD_NAM"]
+    assert (schema.field("UPD_CNT").type, schema.field("UPD_CNT").nullable) == (pa.uint8(), True)
+    assert schema.field("UPD_NAM").type == pa.list_(pa.field("item", pa.string(), nullable=False))
+    assert not schema.field("UPD_NAM").nullable
+    assert [schema.field(n).metadata for n in ["UPD_CNT", "UPD_NAM"]] == [{b"stdf_type": b"U1"}, {b"stdf_type": b"KxCn"}]
+
+    table = stdf_convert.tables(path)["VUR"]
+    assert table.schema == schema
+    assert table.select(["UPD_CNT", "UPD_NAM"]).to_pylist() == want
+    batches = [b for t, b in stdf_convert.batches(path) if t == "VUR"]
+    assert pa.Table.from_batches(batches).select(["UPD_CNT", "UPD_NAM"]).to_pylist() == want
+    assert [r["data"] for r in json_lines(path, tmp_path) if r["record_type"] == "VUR"] == want
+
+
+@pytest.mark.parametrize(
+    "payload, message",
+    [
+        (bytes([2]) + cn("V4-2007"), "UPD_CNT is 2, but the record holds only 1"),
+        (vur_two_names()[:-4], "UPD_CNT is 2, but update name 2 is cut short (7 of 11 bytes)"),
+        (bytes([1]) + cn("V4-2007") + b"xy", "UPD_CNT is 1, but 2 byte(s) follow the update names"),
+    ],
+    ids=["missing-name", "cut-short", "extra-bytes"],
+)
+def test_malformed_vur_is_an_error(tmp_path: Path, payload: bytes, message: str) -> None:
+    path = tmp_path / "vur.stdf"
+    path.write_bytes(FAR + record(0, 30, payload))
+    message = f"VUR record at byte offset 6: {message}"
+
+    with pytest.raises(stdf_convert.StdfError) as e:
+        stdf_convert.tables(path)
+    assert str(e.value) == message
+    with pytest.raises(stdf_convert.StdfError, match="VUR record at byte offset 6"):
+        list(stdf_convert.batches(path))
+    result = subprocess.run(
+        [sys.executable, "-m", "stdf_convert", "-q", "-o", str(tmp_path / "json"), str(path)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0 and message in result.stderr
+    assert not (tmp_path / "json" / "vur.jsonl").exists()
+    assert list(stdf_convert.tables(path, ["FAR"])) == ["FAR"]  # VUR not decoded when not wanted

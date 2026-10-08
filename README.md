@@ -41,6 +41,8 @@ One JSON object per line, per record, fields in STDF specification order:
 - Absent optional fields are `null`. Records outside the specification are kept:
   `RESERVED` (types 180 and 181) and `UNKNOWN` (unknown types), each with `TYP`, `SUB`,
   `BYTE_ORDER` and its payload as `RAW_DATA`.
+- `VUR` is `{"UPD_CNT":2,"UPD_NAM":["V4-2007","Scan:2007.1"]}`, or with `UPD_CNT` null for
+  the V4-2007 specification's single name. A VUR that is neither is an error.
 
 ## Python
 

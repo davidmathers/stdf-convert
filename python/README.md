@@ -49,6 +49,10 @@ Optional fields are nullable and null only where the record left them out; NaN s
 Records outside the specification are kept: `RESERVED` (types 180 and 181) and `UNKNOWN`
 (unknown types), each with `TYP`, `SUB`, `BYTE_ORDER` and its payload as `RAW_DATA`.
 
+`VUR` has `UPD_CNT` (`uint8`) and `UPD_NAM` (`list<string>`), for both layouts in use: the
+V4-2007 specification's single name (`UPD_CNT` null), and the later count and array of names,
+e.g. `2`, `["V4-2007", "Scan:2007.1"]`. A VUR that is neither is an error.
+
 Record order across tables is given by `sequence_number`, e.g. to find each result's part:
 
 ```python

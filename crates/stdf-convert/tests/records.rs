@@ -77,10 +77,53 @@ fn unknown_records_keep_their_bytes() {
     ));
 }
 
+/// VUR payloads: the count-and-array layout, the specification's single name, and none.
+const VURS: [(&str, &[u8], &str); 4] = [
+    ("two", b"\x02\x07V4-2007\x0bScan:2007.1", r#"{"UPD_CNT":2,"UPD_NAM":["V4-2007","Scan:2007.1"]}"#),
+    ("one", b"\x01\x07V4-2007", r#"{"UPD_CNT":1,"UPD_NAM":["V4-2007"]}"#),
+    ("single", b"\x07V4-2007", r#"{"UPD_CNT":null,"UPD_NAM":["V4-2007"]}"#),
+    ("empty", b"", r#"{"UPD_CNT":null,"UPD_NAM":[]}"#),
+];
+
 #[test]
-fn v4_2007_record() {
-    let path = file("vur.stdf", &with_record(0, 30, b"\x07V4-2007"));
-    assert!(jsonl(&path, Some(&["vur"])).contains(r#""data":{"UPD_NAM":"V4-2007"}"#));
+fn vur_keeps_every_update_name() {
+    for (name, payload, want) in VURS {
+        let path = file(&format!("vur-{name}.stdf"), &with_record(0, 30, payload));
+        assert!(jsonl(&path, Some(&["vur"])).contains(&format!(r#""data":{want}}}"#)), "{name}");
+    }
+}
+
+#[test]
+fn vur_arrow_columns_match_json() {
+    use arrow_array::Array;
+    use arrow_array::cast::AsArray;
+    use arrow_array::types::UInt8Type;
+
+    for (name, payload, _) in VURS {
+        let path = file(&format!("vur-arrow-{name}.stdf"), &with_record(0, 30, payload));
+        let tables = stdf_convert::arrow::read_tables(&path, Some(&["VUR"])).unwrap();
+        let [(_, batch)] = &tables[..] else { panic!("one VUR table") };
+        assert_eq!(batch.schema(), stdf_convert::arrow::schema("VUR").unwrap());
+        let cnt = batch.column_by_name("UPD_CNT").unwrap().as_primitive::<UInt8Type>();
+        let names = batch.column_by_name("UPD_NAM").unwrap().as_list::<i32>().value(0);
+        let names: Vec<String> = names.as_string::<i32>().iter().map(|n| n.unwrap().into()).collect();
+        let vur = stdf_convert::Vur::decode(payload).unwrap();
+        assert_eq!((cnt.is_valid(0).then(|| cnt.value(0)), names), (vur.upd_cnt, vur.upd_nam), "{name}");
+    }
+}
+
+#[test]
+fn malformed_vur_is_an_error() {
+    // UPD_CNT=2 but only "V4-2007" follows
+    let bytes = with_record(0, 30, b"\x02\x07V4-2007");
+    let path = file("vur-short.stdf", &bytes);
+    let mut out = Vec::new();
+    let err = json::write_json_lines(RecordReader::open(&path, None).unwrap(), &mut out).unwrap_err();
+    assert_eq!(err.to_string(), "VUR record at byte offset 6: UPD_CNT is 2, but the record holds only 1");
+    let err = stdf_convert::arrow::read_tables(&path, None).unwrap_err();
+    assert!(matches!(err, Error::Malformed { record_type: "VUR", byte_offset: 6, .. }), "{err}");
+    // not decoded when filtered out
+    assert_eq!(jsonl(&path, Some(&["far"])).lines().count(), 1);
 }
 
 #[test]

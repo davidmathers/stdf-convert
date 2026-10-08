@@ -19,6 +19,8 @@
 //! `KxUf` arrays are widened to `list<uint64>` (the record's `*_SIZE` fields give the width
 //! in the file). `GDR.GEN_DATA` is a list of structs: the value's type (`U1`, `Cn`, `B0`, ...)
 //! and a column per type, set only for values of that type.
+//! `VUR` has `UPD_CNT` and `UPD_NAM` (`list<utf8>`) from [`crate::Vur`] rather than rust-stdf's
+//! single name.
 //!
 //! ```no_run
 //! for batch in stdf_convert::arrow::BatchReader::open("results.stdf.gz", None, 65_536)? {
@@ -110,7 +112,7 @@ impl Table {
         self.rec_len.append(&record.rec_len);
         self.rec_typ.append(&record.rec_typ);
         self.rec_sub.append(&record.rec_sub);
-        self.columns.append(&record.data);
+        self.columns.append(record);
         self.rows += 1;
     }
 
@@ -226,6 +228,7 @@ mod tests {
                 rec_sub: 10,
                 record_type,
                 data,
+                vur: None,
             });
         }
         table.finish().unwrap()
