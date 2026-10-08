@@ -5,7 +5,7 @@ members = ["crates/stdf-convert", "crates/codegen", "python"]
 default-members = ["crates/stdf-convert", "crates/codegen"]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 license = "MIT"
 authors = ["David Mathers"]

@@ -1053,7 +1053,7 @@ dependencies = [
 
 [[package]]
 name = "stdf-convert"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
@@ -1068,7 +1068,7 @@ dependencies = [
 
 [[package]]
 name = "stdf-convert-codegen"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "quote",
  "serde_json",
@@ -1077,7 +1077,7 @@ dependencies = [
 
 [[package]]
 name = "stdf-convert-python"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "arrow-array",
  "pyo3",
