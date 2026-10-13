@@ -1,9 +1,9 @@
 # rust-stdf: VUR with an update count is misread (`UPD_CNT` taken as the name length)
 
 Background for [noonchen/rust-stdf#33](https://github.com/noonchen/rust-stdf/issues/33), filed 2026-10-08 with the text in
-[rust-stdf-vur-issue.md](rust-stdf-vur-issue.md).
-stdf-convert works around it in [`crates/stdf-convert/src/vur.rs`](../../crates/stdf-convert/src/vur.rs);
-when rust-stdf is fixed, remove the workaround (see [After an upstream fix](#after-an-upstream-fix)).
+[rust-stdf-vur-issue.md](rust-stdf-vur-issue.md). The maintainer declined it the same day as not
+standard (see [Upstream status](#upstream-status)), so stdf-convert keeps its own VUR decoding in
+[`crates/stdf-convert/src/vur.rs`](../../crates/stdf-convert/src/vur.rs).
 
 ---
 
@@ -18,9 +18,9 @@ pub struct VUR {
 }
 ```
 
-This matches the layout in the published STDF V4-2007 specification. But testers also write VUR
-in a later layout, a count followed by an array of names, so that a file can list every update it
-uses (e.g. the base standard and the scan extension):
+This matches the layout in the STDF V4-2007 specification. But some testers write VUR as a count
+followed by an array of names, so that a file can list every update it uses (e.g. the base standard
+and the scan extension):
 
 | Field | Type | Description |
 |---|---|---|
@@ -94,20 +94,22 @@ Verified against rust-stdf 1.1.0 on 2026-10-07.
   and one from January 2009 ("ScanFailDatalog_2009_1_9", [on GitHub](https://github.com/lantianjialiang/stdf_spec/blob/master/stdf_V4-2007_spec.pdf)).
   rust-stdf's other V4-2007 records (e.g. STR) match the January 2009 copy, which differs from the
   July 2008 one.
-- The count-and-array layout (`UPD_CNT U*1`, `UPD_NAM k*C*n`) comes from SEMI's STDF memory fail
-  datalog work. According to search summaries (the document itself was not checked), SEMI Draft
-  Document 4782 defines VUR as a count of entries and an array of version update names, with values
-  such as `"Memory:2"`. `"Scan:2007.1"` follows the same naming pattern.
+- The count-and-array layout (`UPD_CNT U*1`, `UPD_NAM k*C*n`) may come from SEMI's STDF memory
+  fail datalog work. Unverified: according to search summaries (the document itself was not
+  checked), SEMI Draft Document 4782 defines VUR as a count of entries and an array of version
+  update names, with values such as `"Memory:2"`. `"Scan:2007.1"` follows the same naming pattern.
 - That draft was published as [SEMI G91](https://store-us.semi.org/products/g09100-semi-g91-standard-test-data-format-stdf-memory-fail-datalog),
   *Standard Test Data Format (STDF) Memory Fail Datalog* (first revision G91-0513). SEMI lists it as
-  inactive, which it says leaves it valid for use. G91 is a paid document; before filing, confirm
-  that its VUR definition matches the draft's, and cite the clause.
+  inactive, which it says leaves it valid for use. G91 is a paid document and has not been checked,
+  so whether it defines this VUR layout is unconfirmed.
 - Other readers implement the count layout. Spry Software's Java STDF reader
   ([`spry.reader.stdf.VUR`](https://sprysoftware.net/javadoc/javadoc/spry/reader/stdf/VUR.html))
   has `getUpd_cnt()` (`short`) and `getUpd_nam()` (`String[]`), and a separate
   `readDraftFormatRecord`, apparently for the other layout. Its documentation cites no
   specification, so this shows how files are written in practice, not what a standard says.
-- Both layouts occur in real files, so a reader has to accept both.
+- Both layouts occur in real files, so a reader has to accept both. Without G91's text, it can't be
+  ruled out that the count layout is a convention among tester vendors rather than a SEMI
+  standard, as the rust-stdf maintainer concluded.
 
 References (bibliographic details from Crossref):
 
@@ -145,13 +147,32 @@ pub struct VUR {
 ```
 
 This is a breaking change to the public `VUR` struct (and its serde output), so it likely needs a
-major version. rust-stdf's existing `KxCnRef` / `read_kx_cn` already decode the names.
+major version. rust-stdf's existing `KxCnRef` / `read_kx_cn` already decode the names. As the
+maintainer pointed out, rust-stdf-derive requires optional fields to come last
+(`StdfErrorKind::InvalidOptionalOrder`), so this shape doesn't fit its record macro as it stands.
 
 ---
 
-## After an upstream fix
+## Upstream status
 
-stdf-convert's workaround, to remove once rust-stdf reads both layouts:
+On 2026-10-08 the maintainer declined [#33](https://github.com/noonchen/rust-stdf/issues/33) and labelled it "not standard":
+
+- They consider the count layout a variant introduced by testers, not part of the specification,
+  which rust-stdf is meant to follow.
+- Supporting two layouts for one record would complicate rust-stdf-derive, which generates the
+  record code.
+- They will consider a way to replace the default parsing of a record, for testers that extend
+  standard records.
+
+On 2026-10-13 we replied, linking this page, that stdf-convert already has a fix and that the
+issue was to let them know in case they want the feature.
+
+So stdf-convert's VUR decoding stays. If rust-stdf adds a way to replace a record's parsing, it
+could replace `Record.vur` and the codegen override below, keeping the same output.
+
+## stdf-convert's VUR decoding
+
+What stdf-convert adds for VUR, in case rust-stdf ever reads both layouts:
 
 - `crates/stdf-convert/src/vur.rs`: `Vur` and its decoder (`Vur::decode`, `Vur::of`), with unit
   tests for both layouts and malformed records.

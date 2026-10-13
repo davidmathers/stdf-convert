@@ -30,8 +30,8 @@ pub const OUTPUT: &str = "crates/stdf-convert/src/arrow/generated.rs";
 pub const OVERRIDES_SOURCE: &str = "crates/stdf-convert/src/vur.rs";
 
 /// Records whose columns come from a stdf-convert struct rather than rust-stdf's: (record name,
-/// struct). The struct has a `fn of(&Record) -> Cow<Self>` giving a record's values. VUR: until
-/// https://github.com/noonchen/rust-stdf/issues/33 is fixed.
+/// struct). The struct has a `fn of(&Record) -> Cow<Self>` giving a record's values. VUR: rust-stdf
+/// reads only the single-name layout (https://github.com/noonchen/rust-stdf/issues/33).
 const OVERRIDES: &[(&str, &str)] = &[("VUR", "Vur")];
 
 /// `StdfRecord` variants after the `RECORDS` table: (variant, struct, record name as in
