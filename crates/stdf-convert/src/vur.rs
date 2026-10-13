@@ -1,8 +1,8 @@
 //! The Version Update Record, which rust-stdf reads in only one of the two layouts in use.
 //!
 //! The STDF V4-2007 specification defines VUR as a single `UPD_NAM` (`C*n`), e.g. `"V4-2007"`.
-//! Later extensions (the scan and memory fail datalog updates) redefine it as a count and an
-//! array, so a file can name every update it uses:
+//! Some testers write it as a count and an array instead, so a file can name every update it uses
+//! (possibly following SEMI's memory fail datalog work; see `docs/upstream`):
 //!
 //! | field | type | |
 //! |---|---|---|
@@ -10,9 +10,9 @@
 //! | `UPD_NAM` | `k*C*n` | update names, e.g. `"V4-2007"`, `"Scan:2007.1"` |
 //!
 //! rust-stdf's `VUR` has the single `C*n`, so it reads `UPD_CNT` as the length of the first
-//! name and drops the rest ([rust-stdf#33](https://github.com/noonchen/rust-stdf/issues/33)). [`Vur`] reads both
-//! layouts: `UPD_CNT` is null for the single-name layout, so the record can be written back as it
-//! was.
+//! name and drops the rest. rust-stdf declined to read the other layout, as not standard
+//! ([rust-stdf#33](https://github.com/noonchen/rust-stdf/issues/33)). [`Vur`] reads both layouts: `UPD_CNT`
+//! is null for the single-name layout, so the record can be written back as it was.
 
 use std::borrow::Cow;
 
